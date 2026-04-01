@@ -45,9 +45,11 @@ export OTLP_LOGS_URL=http://localhost:4318/v1/logs
 mise run dev:otlp
 ```
 
-### Register with Claude Code
+### Register with your agent
 
-Add this to your `~/.claude/claude.json`:
+TraceForward works with any MCP-compatible agent. Point your agent at the server using its MCP configuration.
+
+**Claude Code** — add to `~/.claude/claude.json`:
 
 ```json
 {
@@ -60,6 +62,22 @@ Add this to your `~/.claude/claude.json`:
   }
 }
 ```
+
+**Cursor** — add to `.cursor/mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "traceforward": {
+      "command": "mise",
+      "args": ["run", "dev"],
+      "cwd": "/path/to/traceforward-mcp"
+    }
+  }
+}
+```
+
+Other MCP-compatible agents (Windsurf, Cline, etc.) follow similar patterns — consult your agent's MCP configuration docs.
 
 ## Tools reference
 
