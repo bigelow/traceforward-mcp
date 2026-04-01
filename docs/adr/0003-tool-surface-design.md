@@ -26,6 +26,8 @@ TraceForward exposes **six MCP tools**:
 
 All tools are prefixed with `traceforward_` to namespace them clearly in an agent's tool registry, where multiple MCP servers may be active.
 
+Derived tools do not require additional SignalAdapter methods (ADR-0001). Service map construction and error extraction are performed in the signals layer from trace data returned by query_traces(). This keeps the adapter contract at four methods regardless of how many tools are exposed.
+
 ## Consequences
 
 - **Minimal surface.** Six tools are learnable. Agents can reason about which tool to call without extensive prompt engineering.
