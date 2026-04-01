@@ -25,7 +25,7 @@ New backends are supported by implementing a new adapter — no changes to the t
 ## Consequences
 
 - **Extensibility.** Adding a new observability backend is a single module implementing four methods against a known protocol.
-- **Testability.** Adapters can be tested in isolation; the tool layer can be tested against a mock adapter.
+- **Testability.** Adapters can be tested in isolation; the tool layer can be tested against the fixture adapter (ADR-0016).
 - **Contributor-friendly.** The adapter interface is the primary extension point for the community.
 - **Trade-off.** The four-method protocol may not perfectly fit every backend's capabilities. Some adapters may need to synthesize responses (e.g., deriving service lists from trace data rather than a native service catalog). This is acceptable — adapters own that translation.
 - **Trade-off.** The protocol surface must remain stable once published, as adapters depend on it. Changes require careful versioning.
