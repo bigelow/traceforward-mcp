@@ -25,3 +25,8 @@ ADRs follow a lean Nygard-style template: Title, Date, Status, Context, Decision
 | [0011](0011-redaction-disclosure-and-data-handling-policy.md) | Redaction, Disclosure, and Data Handling Policy | Accepted |
 | [0012](0012-canonical-entity-and-identity-model.md) | Canonical Entity and Identity Model | Accepted |
 | [0013](0013-tool-response-contract.md) | Tool Response Contract | Accepted |
+| [0014](0014-action-and-governance-boundary.md) | Action and Governance Boundary | Accepted |
+| [0015](0015-adr-driven-development-methodology.md) | ADR-Driven Development Methodology | Accepted |
+| [0016](0016-fixture-adapter-as-reference-implementation.md) | Fixture Adapter as Reference Implementation | Accepted |
+| [0017](0017-test-strategy-and-coverage-policy.md) | Test Strategy and Coverage Policy | Accepted |
+| [0018](0018-agent-session-capture-with-entire-io.md) | Agent Session Capture with Entire.io | Accepted |
