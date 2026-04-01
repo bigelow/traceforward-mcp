@@ -23,9 +23,9 @@ Coding agents ask good questions but have no way to look up the answers. They do
 
 ## Quick start
 
-### Fixture mode — no backend required
+### Fixture mode — the reference implementation
 
-Fixture mode ships with realistic sample data so you can try TraceForward without connecting to anything.
+Fixture mode is TraceForward's reference implementation. It ships with realistic, deterministic sample data so you can develop, test, and evaluate TraceForward without connecting to a running backend. The fixture adapter implements the full `SignalAdapter` protocol — it is not a mock or a demo shortcut.
 
 ```bash
 mise run dev
@@ -74,7 +74,7 @@ Add this to your `~/.claude/claude.json`:
 
 ## Adding a backend
 
-Implement a new adapter in `adapters/`. Implement the `SignalAdapter` protocol from `adapters/protocol.py` — four methods: `list_services`, `query_logs`, `query_metrics`, `query_traces`. Each returns a list of dicts. The tools `traceforward_get_service_map` and `traceforward_get_errors` are derived from trace data in the signals layer and do not require separate backend methods. See `adapters/fixture.py` for a working example.
+Implement a new adapter in `adapters/`. Implement the `SignalAdapter` protocol from `adapters/protocol.py` — four methods: `list_services`, `query_logs`, `query_metrics`, `query_traces`. Each returns normalized Pydantic v2 models. The tools `traceforward_get_service_map` and `traceforward_get_errors` are derived from trace data in the signals layer and do not require separate backend methods. See `adapters/fixture.py` for the reference implementation.
 
 ## Sample session
 
@@ -116,3 +116,11 @@ An agent is asked to restart `payment-service` after reports of checkout failure
 ```
 
 Now the agent knows: the failures are a gateway timeout and a card decline from Stripe — not a crashed process. Restarting the service won't fix either problem. Instead of suggesting a restart, the agent can suggest investigating the upstream payment gateway.
+
+## Architecture decisions
+
+TraceForward is built with AI coding agents. An agent writing code without architectural context is just a fast typist — it needs to know *why* before it can get the *what* right.
+
+Every architectural decision is documented before the code that implements it. The ADRs in [`docs/adr/`](docs/adr/) define the adapter pattern, tool surface, security model, terminology conventions, governance boundaries, and development methodology. They serve as both project governance and context injection for agent-assisted development.
+
+See the [ADR index](docs/adr/README.md) for the full list.
