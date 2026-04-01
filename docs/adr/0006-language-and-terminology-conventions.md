@@ -19,7 +19,7 @@ The following terminology rules apply to all TraceForward documentation, tool de
 - **Always use "environment"** — never "production." Example: "Before your agent touches the payment service, it checks how that service actually behaves in your environment."
 - **Never use "autonomous," "automatically," or "AI makes decisions."** TraceForward delivers signal data. Agents and humans decide what to do with it. Frame TraceForward as providing intelligence, not taking action.
 
-These conventions are enforced through documentation review, not tooling.
+These conventions are enforced through documentation review and automated convention tests (ADR-0017) that scan tool descriptions, docstrings, and user-facing strings for forbidden terms.
 
 ## Consequences
 
