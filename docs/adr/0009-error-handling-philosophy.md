@@ -5,7 +5,7 @@
 
 ## Context
 
-TraceForward sits between coding agents and observability backends. Errors can occur at multiple layers: adapter connection failures, backend query timeouts, malformed responses, missing services, or invalid parameters from the calling agent.
+TraceForward sits between coding agents and observability backends. Every error includes a category (e.g., connection_error, query_error, not_found, validation_error, authentication_error, authorization_error) and a human-readable message. The full error taxonomy is defined across this ADR and ADR-0008 (Security and Authentication Model).
 
 How TraceForward communicates errors matters more than in a typical API, because the consumer is often an LLM agent that needs to reason about what went wrong and decide what to do next. Opaque error codes or stack traces are useless to an agent. Vague messages like "internal error" prevent recovery.
 
