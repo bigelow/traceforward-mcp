@@ -1,4 +1,4 @@
-# 0007 — Tessl Integration Strategy
+# 0007 — External Distribution of Agent Guidance
 
 **Date:** 2026-03-24
 **Updated:** 2026-04-01
@@ -6,57 +6,33 @@
 
 ## Context
 
-Tessl.io is a platform for managing context for coding agents, treating agent skills and context as software with a complete lifecycle: Use → Create → Evaluate → Distribute. Tessl provides a package manager (CLI), a registry for discovery and distribution, and an evaluation framework that measures how effectively context improves agent behavior.
+TraceForward’s core runtime is an MCP server that exposes environment signal data to coding agents. In addition to the server itself, agents may benefit from external guidance describing how to use TraceForward effectively — when to call specific tools, how to interpret responses, and what governance boundaries apply.
 
-TraceForward, as a tool that provides environment signal data to coding agents, has a natural relationship with this ecosystem. In Patrick Debois's Code Development Lifecycle (CDLC) framework — Generate → Evaluate → Distribute → Observe — TraceForward maps to the **Observe → Generate** bridge: it observes environment signals and delivers that intelligence to the generation phase (coding agents writing or modifying code). Tessl's own Context Lifecycle provides the packaging and distribution mechanism for making TraceForward discoverable and installable.
+Platforms such as Tessl provide packaging, distribution, and evaluation mechanisms for agent-facing context such as skills, rules, and documentation. These platforms may be useful for distributing TraceForward usage guidance, but they are external to the core TraceForward runtime.
 
-The question is whether Tessl integration should be deferred until the core MVP is stable, or run in parallel from day one.
+The project needs to decide whether external distribution platforms are part of the core architecture or optional ecosystem integrations.
 
 ## Decision
 
-Tessl integration runs **in parallel with the TraceForward MVP** from day one, on two tracks:
+TraceForward will keep its MCP server and core runtime architecture independent from any single external distribution platform.
 
-### Track 1: Publish to the Tessl Registry
+External systems such as Tessl may be used to package and distribute:
 
-Publish TraceForward as a **tile** (Tessl's versioned packaging unit) under the `bigelow` namespace on the Tessl Registry. A tile can contain skills, documentation, and rules. The TraceForward tile includes:
+* agent usage guidance
+* tool documentation
+* governance rules
+* evaluation artifacts
 
-- **Skill.** Instructions that teach coding agents how to use TraceForward's MCP tools effectively — when to call each tool, how to interpret responses, and how to combine tools for common workflows (e.g., check errors before suggesting a restart). This is not TraceForward's code; it is the context that helps agents use TraceForward correctly.
-- **Documentation.** Agent-consumable reference for tool parameters, response shapes, and adapter configuration.
-- **Rules.** Constraints aligned with ADR-0014 (Action and Governance Boundary) — TraceForward tools are read-only, responses contain signal data only, no action recommendations.
+These materials are separate from the TraceForward server implementation. They are optional ecosystem integrations, not part of the core runtime boundary.
 
-Installation via the Tessl CLI:
-
-```
-npx tessl i github:bigelow/traceforward-mcp
-```
-
-### Track 2: Map to the CDLC model
-
-TraceForward is the Observe → Generate bridge in Debois's CDLC: it observes environment signals and delivers that intelligence to the generation phase. This mapping gives TraceForward a defined role within a recognized lifecycle model rather than existing as an unpositioned MCP server.
-
-Tessl's Context Lifecycle (Use → Create → Evaluate → Distribute) is the mechanism by which TraceForward's skill context reaches agents. The two models are complementary: CDLC describes TraceForward's *role*; Tessl's lifecycle describes how that role is *packaged and delivered*.
-
-CDLC is attributed to Patrick Debois.
-
-### Evaluation
-
-Tessl's evaluation framework measures agent success rates with and without context. Once the TraceForward tile is published, Tessl evals validate that agents using the TraceForward skill make better decisions (e.g., checking error context before suggesting a restart) compared to agents without it. Eval scores are visible on the registry, providing public evidence of the skill's effectiveness.
-
-### Future: Staleness detection
-
-Tessl evals can also detect staleness — when published skill context has drifted from current TraceForward behavior. Periodic eval runs against the latest TraceForward release surface regressions in skill quality. This aligns with Tessl's position that context should be treated as software with continuous validation, not a static artifact.
-
-### Future: GitHub Actions automation
-
-Tessl supports review and publish via GitHub Actions. A future TraceForward CI workflow could automatically lint, evaluate, and publish updated tiles to the registry when the skill content changes. This is not in scope for the MVP but is a natural automation step.
+TraceForward remains installable and usable directly through its own MCP server regardless of whether external packaging or registry integrations exist.
 
 ## Consequences
 
-- **Ecosystem alignment.** Publishing on the Tessl Registry makes TraceForward discoverable through the same tooling agents already use for context management. The registry is the natural distribution point for agent-consumable skills.
-- **CDLC coherence.** Mapping to Observe → Generate gives TraceForward a defined role within a recognized lifecycle model, making its purpose clear to adopters and contributors.
-- **Evaluated quality.** Tessl evals provide measurable validation that the TraceForward skill improves agent behavior. Eval scores are public on the registry.
-- **Security posture.** Published tiles receive automated Snyk security scanning through the Tessl Registry, adding a layer of third-party validation.
-- **Parallel work.** Running both tracks simultaneously means neither blocks the other — core development continues while tile packaging is a lightweight parallel effort.
-- **Trade-off.** Tessl is an early-stage platform. If the platform pivots or adoption stalls, the Tessl-specific packaging work has limited reuse. The core MCP server is unaffected regardless.
-- **Trade-off.** Maintaining two distribution paths (direct MCP installation and Tessl tile) adds surface area. The tile is a thin wrapper containing skill instructions and docs, so the maintenance cost is low.
-- **Trade-off.** Tessl evals depend on the eval framework's design and scoring criteria. Eval results are useful but should not be the sole measure of TraceForward's effectiveness.
+* **Core independence.** TraceForward’s runtime architecture does not depend on any external registry, packaging system, or evaluation platform.
+* **Optional ecosystem reach.** External platforms such as Tessl can improve discoverability, packaging, and agent guidance distribution without becoming runtime dependencies.
+* **Clear separation of concerns.** The MCP server remains the source of runtime signal access; external packaging systems distribute guidance about how to use it.
+* **Lower lock-in risk.** If a distribution platform changes direction, adoption stalls, or disappears, TraceForward’s core runtime remains unaffected.
+* **Trade-off.** Guidance distributed through external systems may drift from current TraceForward behavior unless maintained alongside the project.
+* **Trade-off.** Maintaining both direct MCP distribution and external packaging adds some overhead, even when the external artifacts are intentionally thin.
+* **Trade-off.** External evaluation results may be useful signals, but they do not define TraceForward’s architectural correctness or overall value.
