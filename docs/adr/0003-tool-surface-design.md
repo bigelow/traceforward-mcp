@@ -5,32 +5,34 @@
 
 ## Context
 
-MCP tools are the interface that coding agents interact with. The tool surface must balance completeness (agents need enough data to make informed decisions) with simplicity (agents perform best with a small, well-named set of tools that do clear things).
+MCP tools are the interface coding agents use to interact with TraceForward. The tool surface must balance completeness with simplicity: agents need enough signal access to make informed decisions, but they perform better with a small set of clearly named tools than with a large or overlapping interface.
 
-TraceForward ingests three signal types — traces, metrics, and logs — plus needs to expose higher-order views like service topology and error patterns.
+TraceForward ingests three primary signal types — traces, metrics, and logs — and also needs to expose higher-order views such as service topology and error patterns.
 
 ## Decision
 
-TraceForward exposes **six MCP tools**:
+TraceForward will expose six MCP tools:
 
-| Tool | Signal Source | Type |
-|---|---|---|
-| `traceforward_get_traces` | Traces | Direct |
-| `traceforward_get_metrics` | Metrics | Direct |
-| `traceforward_get_logs` | Logs | Direct |
-| `traceforward_list_services` | Services | Direct |
-| `traceforward_get_service_map` | Traces | Derived |
-| `traceforward_get_errors` | Traces | Derived |
+| Tool                           | Signal Source | Type    |
+| ------------------------------ | ------------- | ------- |
+| `traceforward_get_traces`      | Traces        | Direct  |
+| `traceforward_get_metrics`     | Metrics       | Direct  |
+| `traceforward_get_logs`        | Logs          | Direct  |
+| `traceforward_list_services`   | Services      | Direct  |
+| `traceforward_get_service_map` | Traces        | Derived |
+| `traceforward_get_errors`      | Traces        | Derived |
 
-**Direct tools** map 1:1 to `SignalAdapter` methods. **Derived tools** synthesize higher-order views from trace data — service maps show topology and dependency relationships; error summaries surface failure patterns.
+Direct tools map to `SignalAdapter` capabilities. Derived tools produce higher-order views from normalized trace data, including service topology and recent failure patterns.
 
-All tools are prefixed with `traceforward_` to namespace them clearly in an agent's tool registry, where multiple MCP servers may be active.
+All tools are prefixed with `traceforward_` to provide a clear namespace when multiple MCP servers are active in the same agent environment.
 
-Derived tools do not require additional SignalAdapter methods (ADR-0001). Service map construction and error extraction are performed in the signals layer from trace data returned by query_traces(). This keeps the adapter contract at four methods regardless of how many tools are exposed.
+Derived tools do not expand the `SignalAdapter` contract defined in ADR-0001. Service map construction and error extraction are performed above the adapter layer from trace data returned by `query_traces()`.
 
 ## Consequences
 
-- **Minimal surface.** Six tools are learnable. Agents can reason about which tool to call without extensive prompt engineering.
-- **Derived tools add value.** Service maps and error summaries answer the questions agents most often need ("what talks to what?" and "what's failing?") without requiring agents to query raw traces and compute the answers themselves.
-- **Namespacing.** The `traceforward_` prefix prevents collisions but adds verbosity. This is an acceptable trade-off for clarity in multi-tool environments.
-- **Trade-off.** Fixing the tool surface at six tools means new capabilities require either expanding an existing tool's parameters or adding new tools. We prefer evolving parameters over proliferating tools, to keep the surface small.
+* **Small, learnable surface.** Six tools are easier for agents to discover, select, and use reliably than a broader interface.
+* **Higher-order value.** Derived tools answer common triage questions such as service relationships and recent failures without requiring agents to compute those views themselves from raw traces.
+* **Stable adapter boundary.** New derived capabilities can be built above the adapter layer without expanding the core ingestion protocol.
+* **Namespaced tool registry.** The `traceforward_` prefix reduces ambiguity and collisions in multi-server agent environments.
+* **Trade-off.** A constrained tool surface limits how quickly new capabilities can be exposed as separate tools. TraceForward will prefer extending tool parameters and response models before adding new tool names.
+* **Trade-off.** Derived tools depend on the quality and completeness of trace data. In backends with sparse or inconsistent trace coverage, service maps and error summaries may be incomplete.
