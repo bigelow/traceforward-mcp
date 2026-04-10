@@ -1,44 +1,49 @@
-# 0018 — Agent Session Capture with Entire.io
+# 0018 — Agent Session Capture
 
 **Date:** 2026-04-01
 **Status:** Accepted
 
 ## Context
 
-TraceForward is built using AI coding agents (Claude Code) governed by architectural decisions (ADR-0015). When an agent writes code that a human reviews and commits, the session that produced that code — the prompts, reasoning, iterations, and decisions made during the session — is valuable context that would otherwise be lost.
+TraceForward is developed with the assistance of coding agents under explicit architectural governance. When an agent produces code that a human reviews and commits, the implementation session that led to that code contains useful context that is not preserved by source control alone.
 
-Git captures *what* changed. Commit messages capture *why* at a summary level. Neither captures *how* the change was developed: what the agent was asked, what it tried, what it rejected, and what constraints it operated under. This session history is the missing layer between "a decision was made" (ADR) and "code was committed" (git).
+Git captures what changed. Commit messages capture a summary of why. Neither captures how the implementation was developed: the prompts given to the agent, the alternatives explored, the iterations taken, or the constraints applied during the session.
 
-Without session capture, agent-assisted development has an audit gap. If a contributor questions a design choice six months from now, the ADR explains the governing decision and the code shows the implementation, but the reasoning that connected the two is gone.
-
-This gap also matters for TraceForward's relationship with Meridian. Agent session data — prompts, reasoning chains, code changes correlated with commits — is a future adapter source for Meridian's ingestion pipeline. Capturing it now in a structured format creates the foundation for that integration.
+Without session capture, agent-assisted development leaves a gap between architectural intent and committed implementation. For a project that treats governance and traceability as part of its engineering discipline, that gap is material.
 
 ## Decision
 
-TraceForward uses **Entire.io** for agent session capture. Entire.io hooks into the git workflow to capture AI agent sessions (prompts, reasoning, changes) as searchable checkpoints alongside commits.
+TraceForward captures agent implementation sessions as part of its development audit trail.
 
-### What is captured
+Session capture preserves the implementation context between architectural decisions and committed code. It is used to provide an additional traceability layer between:
 
-- **Session checkpoints.** Entire.io captures Claude Code session state at commit-aligned checkpoints on the `entire/checkpoints/v1` namespace. Each checkpoint preserves the prompts given to the agent, the agent's reasoning and output, and the code changes produced.
-- **Correlation with commits.** Checkpoints are tied to the git history, making it possible to trace from a commit back to the agent session that produced it.
-- **No credentials or secrets.** Session capture follows the same redaction principles as ADR-0011 (Redaction, Disclosure, and Data Handling Policy). Sensitive values in prompts or agent output are the developer's responsibility to exclude before committing.
+* **ADR** — why a decision exists
+* **session** — how the implementation was developed
+* **commit** — what code was ultimately recorded
 
-### What is not captured
+The current mechanism used for session capture is **Entire.io**, which records commit-correlated agent checkpoints alongside the normal git workflow. Entire.io is an implementation choice, not the architectural invariant. The architectural decision is that session capture exists; the specific tool may change later.
 
-- **Human review decisions.** Entire.io captures what the agent produced, not the human's review process (what was accepted, rejected, or modified before commit). That context lives in the commit diff and any PR discussion.
-- **Informal sessions.** Exploratory agent conversations that do not result in committed code are not captured. This is acceptable — the audit trail matters for code that ships, not for brainstorming.
+## What is captured
 
-### Integration points
+* **Commit-correlated session checkpoints** that preserve the prompts, outputs, and implementation context associated with agent-assisted development
+* **Session-to-commit linkage** so contributors can trace from committed code back to the development session that produced it
 
-- **Git workflow.** Entire.io operates alongside git, not as a replacement for any part of the commit workflow. The developer commits code normally; Entire.io captures the session context that produced it.
-- **Claude Code.** Entire.io is active during Claude Code sessions on the TraceForward repo. Session prompts reference governing ADRs (per ADR-0015), and the captured checkpoints preserve that context.
-- **Future Meridian adapter.** Agent session data captured by Entire.io is a candidate source for a Meridian Bronze adapter — agent sessions correlated with commits, correlated with traces, feeding the governed intelligence pipeline. This integration is deferred but the data format is being established now.
+## What is not captured
+
+* **Human review decisions** beyond what is visible in the final commit history, diffs, or code review system
+* **Non-committed exploratory work** unless explicitly preserved through the chosen session capture mechanism
+
+## Integration boundaries
+
+* Session capture is part of the **development workflow**, not the TraceForward runtime
+* Session capture does not replace **git**, code review, or ADR references
+* Human review and human commits remain the authoritative acceptance step for any agent-produced code
 
 ## Consequences
 
-- **Session traceability.** Any committed code can be traced back through the agent session that produced it, closing the gap between ADR (why) → session (how) → commit (what).
-- **Audit trail.** For a project that positions itself as a model for agent-assisted development, demonstrating that agent sessions are captured and searchable is a credibility signal.
-- **Meridian pipeline readiness.** Capturing structured session data now avoids retrofitting when the Meridian adapter integration is built.
-- **Trade-off.** Entire.io is an external dependency for the development workflow, not the runtime. If Entire.io becomes unavailable, the development process continues — session capture is lost but code production is unaffected.
-- **Trade-off.** Session checkpoints add volume to the repository's ancillary data. The `entire/checkpoints/v1` namespace keeps this separate from source code, but storage growth should be monitored.
-- **Trade-off.** Only sessions that result in commits are captured. Valuable exploratory sessions that inform decisions without producing code are not preserved. This is an acceptable scope limit — capturing everything would create noise that dilutes the audit trail's value.
+* **Improved traceability.** The project preserves more of the path from decision to implementation.
+* **Better auditability.** Contributors can inspect how agent-assisted changes were developed, not just the final code that landed.
+* **Tool flexibility.** The architectural commitment is to session capture itself, not to a single vendor or product.
+* **Trade-off.** Session capture introduces an additional workflow dependency beyond source control.
+* **Trade-off.** If the current capture tool becomes unavailable, development can continue, but the additional audit layer is lost until replaced.
+* **Trade-off.** Session capture is still narrower than full development history. Informal reasoning, verbal discussion, and non-committed exploration may remain outside the recorded trail.
