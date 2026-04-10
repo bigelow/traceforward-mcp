@@ -5,108 +5,101 @@
 
 ## Context
 
-TraceForward queries observability backends that contain sensitive operational data. Traces may include HTTP headers with API keys or session tokens. Logs may contain PII — usernames, email addresses, IP addresses, request bodies with personal data. Metrics labels may reveal internal service names, deployment topology, or infrastructure details.
+TraceForward queries observability backends that may contain sensitive operational data. Traces may include headers with API keys or session tokens. Logs may include PII such as usernames, email addresses, IP addresses, or request bodies with personal data. Metrics labels may reveal service names, deployment topology, or infrastructure identifiers.
 
-ADR-0008 establishes the authentication model — who can access TraceForward and how adapters authenticate with backends. But authentication answers *access*, not *exposure*. A caller who is authenticated to query a backend may still receive data that should be filtered, masked, or withheld before it reaches an agent's context window.
+ADR-0008 defines who can access TraceForward and how adapters authenticate with backends. That answers access, not exposure. An authenticated caller may still receive data that should be filtered, masked, or withheld before it enters an agent context window.
 
-ADR-0009 establishes that errors should be actionable — but actionable errors can leak topology and service existence. Listing available services in a "not found" error is helpful for agents but may be an information disclosure concern in shared or remote deployments.
-
-These two ADRs create a tension that needs an explicit policy: what data is allowed to leave TraceForward, and what must be filtered.
+ADR-0009 requires errors to be actionable. But actionable errors can also disclose service existence, dependency structure, or other topology details. TraceForward therefore needs an explicit policy for what data may leave the system and what must be filtered first.
 
 ## Decision
 
-TraceForward adopts a **layered redaction model** with policy enforcement in the core and filtering execution split between adapters and a common redaction layer.
+TraceForward adopts a layered disclosure model: adapters limit retrieval where possible, and the core enforces redaction and disclosure policy before any data is returned through MCP tools.
 
 ### Redaction principles
 
-1. **Credentials never pass through.** API keys, tokens, passwords, and secrets detected in trace headers, log messages, or metric labels are redacted before results leave TraceForward. This is non-negotiable regardless of deployment phase or caller trust level.
+1. **Credentials never pass through.** Secrets, tokens, passwords, API keys, and similar credential material are always redacted before results leave TraceForward.
 
-2. **PII redaction is configurable.** TraceForward provides a default set of PII patterns (email addresses, IP addresses, common personal data formats) that are redacted by default. Operators can extend, reduce, or disable PII redaction through configuration. The default is redact-on.
+2. **PII redaction is configurable.** TraceForward provides a default set of PII patterns, including email addresses, IP addresses, and common personal identifier formats. PII redaction is enabled by default and may be adjusted by operators.
 
-3. **Topology disclosure follows deployment phase.** In local deployments (ADR-0008 Phase 1 and 2), service names, dependency maps, and error details are disclosed freely — the caller is the operator. In remote/shared deployments (Phase 3), topology disclosure is governed by per-caller access scoping defined in ADR-0008.
+3. **Topology disclosure depends on deployment scope.** In local deployments, service names, dependency maps, and detailed errors may be disclosed freely. In shared or remote deployments, topology disclosure is restricted according to deployment policy and caller scope.
 
-4. **Error messages respect disclosure policy.** Actionable errors (ADR-0009) are still actionable, but the detail level adapts to context. In local deployments, "Service 'payment-api' not found. Available services: checkout, inventory, gateway" is appropriate. In remote deployments, error messages may omit the available services list unless the caller has access to that information.
+4. **Error detail follows disclosure policy.** Errors remain actionable, but the amount of detail adapts to the deployment context. Local deployments may include available services or dependency details. Remote deployments may suppress those details unless the caller is authorized to see them.
 
-5. **Adapters may pre-filter.** Some backends support server-side filtering or redaction (e.g., Grafana Loki's label-based access control). Adapters that connect to backends with native filtering should use it — reducing the volume of sensitive data that ever reaches TraceForward.
+5. **Adapters may pre-filter, but do not define policy.** Adapters should use backend-native filtering when available, but disclosure rules are defined and enforced by the core.
 
 ### Where filtering executes
 
-- **Adapter-level pre-filtering.** Adapters use backend-native access controls and query scoping to limit what data is retrieved. This is the first line of defense.
-- **Core redaction layer.** A common redaction step runs after adapter responses are returned and before results are delivered through MCP tools. This layer applies credential stripping, PII pattern matching, and topology disclosure rules. It operates on the normalized Pydantic models that adapters return, not on raw backend responses.
-- **Adapters do not implement redaction policy.** Adapters may pre-filter using backend capabilities, but the redaction rules (what patterns to strip, what to disclose) are owned and enforced by the core. This prevents inconsistency across adapters.
+* **Adapter-level pre-filtering.** Adapters use backend-native access controls and query scoping to reduce what data is retrieved.
+* **Core redaction layer.** After adapter responses are normalized, the core applies credential stripping, PII redaction, and topology disclosure rules before returning data through MCP tools.
+* **Core policy wins.** Backend-native filtering is additive, not authoritative. The core redaction layer runs regardless of what the backend or adapter already filtered.
 
 ### Configuration
 
-Redaction configuration is centralized, not per-adapter:
+Redaction policy is centralized:
 
-- **`redaction.credentials`** — always enabled, not configurable. Credentials are always stripped.
-- **`redaction.pii`** — enabled by default. Operators can configure pattern lists or disable for local-only deployments where PII handling is the operator's responsibility.
-- **`redaction.topology`** — controls whether service names, dependency details, and infrastructure identifiers are included in responses and error messages. Default: disclose in local deployments, restrict in remote deployments.
+* **`redaction.credentials`** — always enabled and not configurable
+* **`redaction.pii`** — enabled by default and operator-configurable
+* **`redaction.topology`** — governs whether service names, dependency details, and infrastructure identifiers are disclosed
 
-### Policy semantics and enforcement guarantees
+### Policy semantics
 
-#### Field classification
+#### Structured fields vs. free text
 
-Redaction rules apply differently to structured fields and free text:
+Redaction operates differently on structured and unstructured content:
 
-- **Structured fields** (Pydantic model attributes — service names, metric labels, trace span attributes, header key-value pairs) are matched by field name and value against known credential and PII patterns. Structured fields are the high-confidence path — patterns match against typed, bounded values.
-- **Free text** (log message bodies, error description strings, span event text) is scanned by regex pattern matching. Free text is the low-confidence path — higher false-positive and false-negative rates are expected and accepted.
+* **Structured fields** such as headers, span attributes, labels, and typed model fields are matched by field name and value
+* **Free text** such as log messages, event text, and error strings is scanned by pattern matching
 
-The distinction matters because a field named `authorization` in a trace header is a structured match (high confidence), while the string "Bearer eyJ..." appearing inside a log message body is a free-text match (pattern-dependent).
+Structured fields are the high-confidence path. Free text is inherently lower confidence and may produce false positives or false negatives.
 
-#### What is always redacted (non-configurable)
+#### Always-redacted data
 
-Regardless of deployment phase or operator configuration:
+Regardless of deployment phase or operator configuration, the following are always redacted:
 
-- HTTP `Authorization` header values
-- Values matching `Bearer`, `Basic`, API key, and token patterns in any field
-- Environment variable values embedded in log messages that match known secret naming conventions (`*_SECRET`, `*_KEY`, `*_TOKEN`, `*_PASSWORD`)
-- Connection strings containing embedded credentials
+* HTTP `Authorization` header values
+* Bearer, Basic, API key, token, and password patterns
+* Embedded environment-variable values matching common secret naming conventions
+* Connection strings containing credentials
 
-These are the **credential floor** — the minimum guarantee the platform makes. An operator cannot weaken this. If a credential pattern is detected, the value is replaced with `[REDACTED]`.
+These form the credential floor. Operators cannot disable this behavior. Redacted values are replaced with `[REDACTED]`.
 
-#### What is conditionally redacted (configurable)
+#### Conditionally redacted data
 
-When `redaction.pii` is enabled (default: on):
+When `redaction.pii` is enabled:
 
-- Email address patterns
-- IPv4 and IPv6 addresses
-- Common personal identifier formats (SSN patterns, phone number patterns)
-- Operator-defined custom patterns
+* email address patterns
+* IPv4 and IPv6 addresses
+* common personal identifier patterns
+* operator-defined custom patterns
 
-When `redaction.topology` is restricted (default in Phase 3):
+When `redaction.topology` is restricted:
 
-- Service names in error messages are replaced with `[service]`
-- Dependency lists in "not found" errors are omitted
-- Infrastructure identifiers (hostnames, pod names, namespace names) are stripped from responses
-
-#### Conflict resolution: adapter pre-filtering vs core policy
-
-When a backend's native filtering and TraceForward's core redaction overlap or disagree:
-
-- **Core policy always wins.** If core policy says a field must be redacted, it is redacted even if the adapter's backend already considers the data "safe."
-- **Adapter pre-filtering is additive, not authoritative.** Backend-native filtering reduces what reaches the core, but the core does not trust that filtering is complete. The core redaction layer runs unconditionally.
-- **Adapters must not redact on their own initiative.** An adapter that strips data the core doesn't know about creates invisible data loss. If an adapter's backend requires mandatory filtering (e.g., Loki tenant isolation), the adapter documents what is pre-filtered so operators understand the full pipeline.
+* service names in error messages may be replaced
+* dependency lists may be omitted
+* infrastructure identifiers such as hostnames, pod names, and namespaces may be stripped
 
 #### Redaction markers
 
-When a value is redacted, the response includes a marker:
+When values are withheld, TraceForward preserves that fact explicitly:
 
-- Redacted values are replaced with `[REDACTED]`, not silently dropped. This preserves the structure of the response (an agent can see that a header existed but its value was removed, rather than the header appearing to not exist).
-- When `redaction.topology` omits a list (e.g., available services in an error), the error message includes `[topology restricted]` so the agent knows information was withheld, not that zero services exist.
+* redacted values are replaced with `[REDACTED]`
+* withheld topology details are marked with `[topology restricted]`
 
-#### Audit and testing
+This preserves response structure and makes it clear that information was filtered rather than absent.
 
-- **Redaction is tested per release.** The test suite includes fixtures with known credential patterns, PII patterns, and topology identifiers. Tests verify that all credential-floor patterns are redacted regardless of configuration.
-- **Redaction failures are logged.** If the redaction layer encounters a field it cannot classify (unrecognized structure, ambiguous content), it logs a warning via structlog (ADR-0010) with the field name and context — never the field value.
-- **No compliance guarantee.** TraceForward's redaction is a best-effort engineering control, not a regulatory compliance boundary. Operators with compliance requirements (GDPR, HIPAA, SOC 2) must validate that TraceForward's redaction meets their specific obligations. The platform provides the mechanism; the operator owns the policy adequacy.
+### Audit and testing
+
+* Redaction behavior is tested with fixtures containing known secret, PII, and topology patterns
+* Credential-floor redaction is validated on every release
+* Redaction classification failures are logged without including the sensitive value itself
+* TraceForward redaction is a best-effort engineering control, not a regulatory compliance guarantee
 
 ## Consequences
 
-- **Defense in depth.** Adapter pre-filtering reduces sensitive data retrieval; core redaction catches anything that gets through.
-- **Consistent policy.** Redaction rules live in one place, applied uniformly regardless of which adapter produced the data.
-- **Credential safety.** The hardcoded credential stripping rule means TraceForward never becomes a vector for leaking secrets from observability data, even if an operator misconfigures other settings.
-- **Resolves ADR-0009 tension.** Error disclosure adapts to deployment context rather than being unconditionally verbose or unconditionally opaque.
-- **Trade-off.** The core redaction layer adds processing to every response. For local deployments with PII redaction disabled, this cost is minimal (credential stripping only). For deployments with full PII pattern matching, there is a measurable overhead on large result sets.
-- **Trade-off.** Pattern-based PII detection is imperfect. It will miss novel formats and may false-positive on benign data. This is an inherent limitation of regex-based redaction and is acceptable as a first layer — not a compliance guarantee.
-- **Trade-off.** Topology disclosure rules that differ by deployment phase mean the same TraceForward instance may behave differently depending on configuration. This is intentional — local and remote deployments have genuinely different threat models — but operators must understand the distinction.
+* **Defense in depth.** Backend-native filtering reduces exposure early, and the core redaction layer enforces consistent policy before data leaves TraceForward.
+* **Consistent disclosure policy.** Redaction rules are defined once and applied uniformly across adapters.
+* **Credential safety floor.** TraceForward will not knowingly emit credential material, even if other policy settings are weakened or misconfigured.
+* **Context-sensitive error disclosure.** The system can remain actionable without disclosing the same level of detail in every deployment mode.
+* **Trade-off.** Redaction adds processing overhead, especially when scanning large result sets or free-text fields.
+* **Trade-off.** Pattern-based PII detection is imperfect and should not be treated as a compliance guarantee.
+* **Trade-off.** The same instance may disclose different levels of detail depending on deployment mode and configuration. This is intentional, but operators must understand it.
