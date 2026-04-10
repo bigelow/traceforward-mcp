@@ -5,28 +5,32 @@
 
 ## Context
 
-TraceForward needs a language and toolchain that supports rapid development, strong typing for data models, and alignment with the MCP ecosystem.
+TraceForward needs an implementation stack that supports rapid iteration, strong model validation, and close alignment with the MCP ecosystem. The stack also needs to fit the project’s observability and infrastructure focus, where Python is widely used for tooling, automation, and backend integration.
 
 Alternatives considered:
 
-- **TypeScript** — strong MCP SDK support, but the maintainer's deep expertise is in Python and the observability/infrastructure ecosystem is Python-heavy.
-- **Go** — excellent for systems tooling, but lacks a mature MCP SDK and Pydantic-equivalent data validation.
-- **Python + pip/poetry** — viable, but pip lacks deterministic lockfiles by default and poetry's resolver can be slow.
+* **TypeScript** — strong MCP SDK support, but less aligned with the maintainer’s primary implementation background and with the surrounding observability and infrastructure tooling used by the project.
+* **Go** — strong fit for systems tooling, but lacks an equivalent to Pydantic for model validation and has a less mature MCP ecosystem.
+* **Python with pip or Poetry** — viable, but less aligned with the project’s preference for fast, deterministic dependency workflows.
 
 ## Decision
 
-We use:
+TraceForward will use Python as its implementation language.
 
-- **Python** as the implementation language.
-- **uv** for dependency management and virtual environment handling. Fast, deterministic, and replacing pip/poetry in modern Python workflows.
-- **Pydantic v2** for all data models (adapter responses, tool inputs/outputs, configuration). Pydantic v2's Rust-based validation is fast, and its integration with FastMCP provides automatic tool input validation.
-- **mise** (mise.toml) for tool version management and task running across the project.
+The project will use:
+
+* **uv** for dependency management and virtual environment handling
+* **Pydantic v2** for all data models, including adapter responses, tool inputs and outputs, and configuration
+* **mise** for tool version management and task execution across the project
+
+Pydantic v2 provides the typed model boundary for the system, and FastMCP integration allows those models to flow directly into MCP tool schemas and validation.
 
 ## Consequences
 
-- **Speed.** uv's dependency resolution and installation is significantly faster than pip or poetry, improving CI and contributor onboarding.
-- **Type safety.** Pydantic v2 models enforce structure at the boundary — adapters must return well-typed data, and MCP tools receive validated inputs.
-- **FastMCP alignment.** FastMCP is Python-native and uses Pydantic for tool schemas. This stack choice eliminates impedance mismatch.
-- **mise consistency.** All project tasks (test, lint, run) are defined in mise.toml, providing a single entry point regardless of environment.
-- **Trade-off.** Python is slower than Go or Rust for compute-heavy work. TraceForward is I/O-bound (querying backends), so this is not a concern.
-- **Trade-off.** uv is newer than pip/poetry. If uv development stalls, migration to another tool is straightforward since uv uses standard pyproject.toml.
+* **Python ecosystem fit.** The implementation language aligns with the project’s observability, infrastructure, and automation focus.
+* **Validated model boundary.** Pydantic v2 enforces structure at system boundaries, including adapter outputs, configuration, and MCP tool inputs and outputs.
+* **FastMCP alignment.** The stack avoids impedance mismatch between the application layer, model layer, and MCP interface layer.
+* **Deterministic workflow.** `uv` and `pyproject.toml` provide a fast, modern dependency workflow with standard Python packaging semantics.
+* **Consistent project entry points.** `mise` provides a single task and tool management layer for development and CI workflows.
+* **Trade-off.** Python is not the best choice for compute-heavy workloads. TraceForward is primarily I/O-bound, so this is an acceptable trade-off.
+* **Trade-off.** `uv` is newer than older Python packaging tools. If the toolchain changes later, migration remains straightforward because the project is anchored on standard Python project metadata.tools.
