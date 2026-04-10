@@ -5,26 +5,27 @@
 
 ## Context
 
-TraceForward's purpose is to give AI coding agents access to environment signal data before they write or modify code. The interface must be natively consumable by LLM-based agents without requiring the agent to learn a bespoke API, authenticate separately, or parse unfamiliar response formats.
+TraceForward exists to give AI coding agents access to environment signal data before they write or modify code. The interface must be consumable by LLM-based agents without requiring each agent framework to integrate a bespoke API, manage separate authentication flows, or translate backend-specific response formats.
 
 Alternatives considered:
 
-- **REST API** — universal, but requires each agent framework to build a custom integration. No standard discovery mechanism for agent tooling.
-- **GraphQL** — flexible query surface, but adds schema complexity and is not natively understood by any major agent framework.
-- **MCP (Model Context Protocol)** — emerging standard for tool-use by LLM agents, with native support in Claude, Cursor, Windsurf, and others. Provides tool discovery, structured input/output, and a standardized transport layer.
+* **REST API** — broadly understood, but requires each agent framework to implement a custom integration. It also provides no standard mechanism for tool discovery.
+* **GraphQL** — flexible query surface, but adds schema complexity and is not natively supported as an agent tool interface by major coding-agent environments.
+* **MCP (Model Context Protocol)** — emerging standard for LLM tool use, with growing support in Claude, Cursor, Windsurf, and similar agent environments. Provides tool discovery, structured inputs and outputs, and a standard transport model.
 
 ## Decision
 
-We use **MCP** as TraceForward's interface layer, implemented with **FastMCP** (Python).
+TraceForward will expose its interface exclusively through MCP.
 
-FastMCP provides decorator-based tool registration, automatic input validation via Pydantic, and built-in transport support (stdio, SSE) — aligning with our Python + Pydantic v2 stack.
+The MCP layer is implemented in Python using **FastMCP**. TraceForward capabilities are exposed as MCP tools that can be discovered and invoked by MCP-compatible agents.
 
-TraceForward exposes its capabilities as MCP tools, discoverable and callable by any MCP-compatible agent.
+FastMCP aligns with the existing Python and Pydantic v2 stack, supports decorator-based tool registration, and provides transport options such as `stdio` and SSE.
 
 ## Consequences
 
-- **Agent-native.** Coding agents that support MCP can discover and use TraceForward without custom integration code.
-- **Low friction.** FastMCP's decorator pattern keeps tool definitions close to the implementation, reducing boilerplate.
-- **Ecosystem alignment.** MCP adoption is growing across agent frameworks; TraceForward benefits from that momentum.
-- **Trade-off.** MCP is still a young protocol. Breaking changes in the spec or in FastMCP could require updates. We mitigate by pinning FastMCP versions and tracking the spec.
-- **Trade-off.** Teams without MCP-compatible agents cannot use TraceForward directly. A REST wrapper is a potential future addition but is not in scope for the MVP.
+* **Agent-native integration.** MCP-compatible agents can discover and use TraceForward without custom integration code.
+* **Consistent tool contract.** Tool discovery, invocation, and structured input/output are handled through a single protocol boundary.
+* **Implementation simplicity.** FastMCP keeps tool definitions close to the implementation and reduces interface boilerplate.
+* **Ecosystem alignment.** TraceForward benefits from adoption of MCP across coding-agent environments instead of maintaining framework-specific integrations.
+* **Trade-off.** MCP remains an evolving protocol. Changes in the specification or in FastMCP may require updates to TraceForward.
+* **Trade-off.** Non-MCP clients are out of scope for the MVP. Supporting them would require an additional interface layer, such as a REST wrapper.
