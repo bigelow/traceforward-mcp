@@ -5,109 +5,94 @@
 
 ## Context
 
-TraceForward's architecture has three distinct layers: adapters (ADR-0001), a signals layer that derives data from adapter output (ADR-0003), and MCP tools that expose that data to agents (ADR-0002). Each layer has different testing needs.
+TraceForward has three architectural layers: adapters, a signals layer that derives higher-order views from adapter output, and MCP tools that expose those results to agents. Each layer has different testing needs.
 
-The fixture adapter (ADR-0016) provides deterministic data with no external dependencies, making it possible to test the full stack — adapter through tool response — without a running backend. This is a significant advantage, but only if the test strategy is designed around it.
+The fixture adapter provides deterministic data with no external dependencies. That makes it possible to test the stack end-to-end without relying on a running backend, but only if the test strategy is designed around that capability.
 
-ADR-0015 (ADR-Driven Development Methodology) establishes that tests trace back to ADRs via pytest markers. This ADR defines what those tests look like, how they are organized, and what coverage means for the project.
+ADR-0015 establishes lightweight ADR traceability in tests. This ADR defines the project’s testing structure, mocking boundaries, and coverage expectations.
 
 ## Decision
 
+TraceForward adopts a layered test strategy that mirrors the architecture and uses the fixture adapter as the default zero-dependency test path.
+
 ### Test framework
 
-pytest with pytest-asyncio. No other test frameworks, no unittest-style classes. Tests are functions, not methods.
+* **pytest**
+* **pytest-asyncio**
+* tests are functions, not unittest-style classes
 
 ### Test layers
 
-Tests are organized into three layers that mirror the architecture:
+#### Adapter tests
 
-**Adapter tests** verify that an adapter correctly implements the `SignalAdapter` protocol.
+Adapter tests verify conformance to the `SignalAdapter` protocol.
 
-- Every adapter (fixture, OTLP, future backends) gets its own test module.
-- Adapter tests verify method signatures, return types (Pydantic models), and data completeness.
-- Fixture adapter tests assert against known values in the fixture data set (ADR-0016).
-- Live adapter tests (when they exist) are marked `@pytest.mark.integration` and excluded from default CI runs.
+* each adapter has its own test module
+* tests verify method behavior, return types, and required data shape
+* fixture adapter tests assert against known fixture values
+* live backend adapter tests are marked `integration` and excluded from default CI runs
 
-**Signal layer tests** verify derived behavior: service map construction from trace spans, error extraction from spans, and any future derivations.
+#### Signal layer tests
 
-- These tests run against fixture adapter output.
-- They verify the transformation logic, not the adapter — if the adapter returns valid data, the signal layer must produce correct derived results.
+Signal tests verify derived behavior such as service map construction and error extraction.
 
-**Tool tests** verify the MCP tool interface: parameter validation, default behaviors (ADR-0005), response structure (ADR-0013), and that tools call the correct signal/adapter methods.
+* these tests run against fixture adapter output
+* they verify transformation logic, not backend integration behavior
 
-- Tool tests run end-to-end through the fixture adapter — no mocking of the adapter layer.
-- They verify the contract between "agent calls a tool with these parameters" and "agent receives this response shape."
+#### Tool tests
+
+Tool tests verify MCP-facing behavior.
+
+* parameter validation
+* default behaviors
+* response envelope structure
+* correct use of signal and adapter layers
+
+Tool tests run end-to-end through the fixture adapter rather than mocking internal layers.
 
 ### Convention tests
 
-A distinct category of tests verifies project-wide invariants drawn from ADRs:
+Convention tests verify project-wide invariants derived from ADRs, including:
 
-- **Terminology (ADR-0006):** Scan tool descriptions, docstrings, and user-facing strings for forbidden terms ("production," "autonomous," "automatically," "AI makes decisions").
-- **Governance boundary (ADR-0014):** Assert that no tool performs write operations or includes action recommendations in response content.
-- **Tool naming (ADR-0003):** Assert all registered tools use the `traceforward_` prefix.
-- **Defaults (ADR-0005):** Assert `lookback_hours` defaults to `24` and `limit` defaults to `50` when parameters are omitted.
+* terminology rules
+* governance boundary rules
+* tool naming conventions
+* default query parameters
 
-Convention tests use the `@pytest.mark.adr("NNNN")` marker from ADR-0015. They are the automated enforcement of architectural decisions that would otherwise rely on code review alone.
+These tests may use ADR markers to make the governing decision explicit.
 
-### Drift detection
+### Drift visibility
 
-Convention tests also detect drift between ADR governance and implementation artifacts (ADR-0015).
+The test suite may include lightweight checks for traceability drift, such as:
 
-- **Traceability drift.** A test scans all Python modules under the core package (`adapters/`, `signals/`, `tools/`) and flags any module missing a `Governing decisions:` docstring reference. This test warns but does not fail — missing references are tracked, not blocked.
-- **Marker drift.** A test verifies that every ADR referenced in a `@pytest.mark.adr()` marker corresponds to an accepted ADR in `docs/adr/`. A test claiming to verify a nonexistent or superseded ADR is a stale reference.
-- **Prompt drift.** If the session prompt is versioned in the repository (per ADR-0015), a test can verify that ADR numbers referenced in the prompt correspond to accepted ADRs. This catches prompts that reference renamed or superseded decisions.
+* missing ADR references in key modules
+* stale ADR markers that reference nonexistent or superseded ADRs
 
-Drift detection tests live in `test_conventions.py` alongside terminology and naming checks. They are lightweight — AST or string scanning, not semantic analysis. Their purpose is visibility, not enforcement. A warning in the test output is enough to prompt a developer to update a reference; a hard failure would create friction that discourages iteration.
+These checks are intended to surface drift, not create heavy process gates.
 
 ### Mocking policy
 
-- **No mocking of internal layers.** Tool tests call through the signal layer to the adapter. Signal tests call through to the adapter. The fixture adapter exists so that mocking is unnecessary for the default test path.
-- **Mocking is permitted only at external boundaries** that do not exist in fixture mode: HTTP clients for live adapters, filesystem operations if ever needed, system clock if time-sensitive logic is introduced (via `freezegun` or equivalent).
-- **No mock adapters.** The fixture adapter is the test adapter. Creating a separate mock adapter would duplicate the protocol implementation and drift from the reference.
+* internal layers are not mocked in the default test path
+* mocking is allowed only at true external boundaries, such as HTTP clients for live adapters or clock control for time-sensitive logic
+* no separate mock adapter is introduced; the fixture adapter is the test adapter
 
 ### Coverage policy
 
-- **Target: 90% line coverage** on the core package (adapters, signals, tools). This is a floor, not a ceiling.
-- **Not 100%.** Defensive error handling paths (e.g., adapter raises an unexpected exception type) and edge cases in configuration loading may not be worth the test investment at this stage. Chasing 100% creates tests that verify implementation details rather than decisions.
-- **Coverage is measured but not gated in CI** for the initial release. Once the test suite stabilizes, a CI gate at 90% can be added. Gating too early on a project this young creates friction that slows iteration without proportional safety benefit.
-- **Coverage gaps are tracked.** When a module falls below the target, the gap is noted — not ignored, not immediately fixed, but visible.
+* target **90% line coverage** across core packages
+* 100% coverage is not required
+* coverage is measured but not initially gated in CI
+* visible coverage gaps are preferred over artificial tests that only exercise plumbing
 
-### Test file naming and location
+### Test organization
 
-```
-tests/
-    test_adapter_fixture.py       # Fixture adapter protocol compliance
-    test_adapter_protocol.py      # Abstract protocol shape tests
-    test_signals_service_map.py   # Service map derivation
-    test_signals_errors.py        # Error extraction
-    test_tool_list_services.py    # One module per tool
-    test_tool_get_traces.py
-    test_tool_get_metrics.py
-    test_tool_get_logs.py
-    test_tool_get_errors.py
-    test_tool_get_service_map.py
-    test_conventions.py           # Terminology, naming, defaults, governance, drift
-```
-
-Test files mirror the thing they test, not the ADR they verify. ADR traceability comes from markers, not file organization.
-
-### Running tests
-
-```bash
-mise run test              # All tests except integration
-mise run test:integration  # Live backend tests (requires running backend)
-mise run test:coverage     # With coverage report
-pytest -m "adr('0003')"   # Only tests verifying ADR-0003
-pytest -m "adr('0006')"   # Only terminology convention tests
-```
+Test modules mirror the components they verify: adapters, signals, tools, and conventions.
 
 ## Consequences
 
-- **Full-stack confidence.** Tests run through all three layers against deterministic data, catching integration issues that unit-level mocks would miss.
-- **ADR verification.** Convention tests turn architectural prose into automated assertions. A decision in an ADR is not just documented — it is enforced.
-- **Drift visibility.** Traceability, marker, and prompt drift tests surface governance gaps without blocking development. The project knows where its references are stale — and can fix them on its own schedule.
-- **Fast feedback.** No external dependencies in the default test path means tests run in seconds, locally and in CI.
-- **Trade-off.** No mocking of internal layers means a bug in the fixture adapter can cause failures in signal and tool tests. This is accepted — the fixture adapter is the reference implementation (ADR-0016), so a bug there *should* be visible everywhere.
-- **Trade-off.** 90% coverage leaves room for untested paths. This is preferable to test bloat that verifies plumbing rather than behavior. The threshold is revisited as the project matures.
-- **Trade-off.** Convention tests that scan strings (terminology, naming) are brittle if the scanning logic is naive. These tests should match against tool registrations and public-facing content, not grep the entire codebase.
-- **Trade-off.** Drift detection tests that warn but do not fail may be ignored. This is accepted — the alternative (hard failure) would block commits for missing docstring references, which violates the "not a bureaucratic process" principle in ADR-0015.
+* **Full-stack confidence.** The default test path exercises adapters, signal derivation, and tool behavior together against deterministic data.
+* **Fast feedback.** Most tests run without network or backend dependencies.
+* **Architectural verification.** Convention tests turn selected ADR rules into executable checks.
+* **Clear mocking boundary.** The project avoids brittle internal mocks by relying on the fixture adapter as the default integration surface.
+* **Trade-off.** A bug in the fixture adapter can affect multiple test layers at once. This is acceptable because the fixture adapter is the reference implementation.
+* **Trade-off.** A 90% target leaves some paths untested. This is preferable to bloated tests that overfit implementation details.
+* **Trade-off.** Lightweight drift checks may be ignored if they do not fail builds. This is accepted to avoid turning traceability into bureaucracy.
