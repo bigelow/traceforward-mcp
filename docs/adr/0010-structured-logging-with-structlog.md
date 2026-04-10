@@ -5,29 +5,31 @@
 
 ## Context
 
-TraceForward is an observability tool — its own operational observability should be exemplary. Unstructured log output (plain text, print statements, inconsistent formats) makes it difficult to diagnose issues, correlate events, and monitor the server in deployment.
+TraceForward is an observability tool and should produce operational signals that are easy to query, correlate, and analyze. Unstructured log output makes it harder to diagnose failures, understand request flow, and operate the server in real environments.
 
 Alternatives considered:
 
-- **stdlib logging** — available everywhere, but produces unstructured text by default. Structured output requires significant configuration and custom formatters.
-- **loguru** — developer-friendly with nice defaults, but less flexible for structured/JSON output and less common in the observability ecosystem.
-- **structlog** — purpose-built for structured, key-value logging in Python. Produces JSON output by default, integrates with stdlib logging, and aligns with the structured data philosophy of the observability space.
+* **stdlib logging** — broadly available, but unstructured by default and cumbersome to standardize for JSON-first logging.
+* **loguru** — developer-friendly, but less aligned with structured logging conventions commonly used in observability systems.
+* **structlog** — purpose-built for structured, key-value logging in Python and well aligned with JSON-based operational logging.
 
 ## Decision
 
-We use **structlog** for all logging in TraceForward.
+TraceForward will use **structlog** for all application logging.
 
-Conventions:
+The project will apply the following conventions:
 
-- **JSON output in deployment.** All log entries are emitted as structured JSON, queryable by any log aggregation tool.
-- **Human-readable output in development.** structlog's console renderer is used for local development, providing colored, readable output without sacrificing structure.
-- **Bound loggers.** Loggers are bound with contextual key-value pairs (adapter name, service being queried, tool being called) at creation time, so every log entry carries relevant context automatically.
-- **No print statements.** All output goes through structlog. Print statements are a lint failure.
+* **Structured output by default.** Log entries are emitted as structured events that can be consumed by standard log aggregation systems.
+* **JSON in deployed environments.** Non-development environments emit JSON logs.
+* **Readable development output.** Local development uses a human-readable renderer without changing the underlying structured event model.
+* **Bound context.** Loggers are expected to carry relevant context such as adapter name, tool name, and service identifier.
+* **No ad hoc output.** User-visible or operational logging does not use `print` statements.
 
 ## Consequences
 
-- **Dogfooding.** An observability tool that produces well-structured, queryable logs demonstrates credibility and makes the project easier to operate.
-- **Correlation.** Bound context (adapter, service, tool) on every log entry makes it trivial to trace a request through the system.
-- **Contributor clarity.** "Use structlog, no print statements" is a simple, enforceable rule.
-- **Trade-off.** structlog is an additional dependency. It is well-maintained, has no transitive dependencies of concern, and is widely used in the Python observability ecosystem.
-- **Trade-off.** Structured JSON logs are harder to read in raw form than plain text. The development console renderer mitigates this for local work.
+* **Operational clarity.** Logs are easier to query, filter, and correlate across environments.
+* **Consistent event model.** Structured logging aligns with TraceForward’s broader model-first approach to signals and interfaces.
+* **Better debugging context.** Bound fields such as adapter, tool, and service make request paths easier to reconstruct.
+* **Simple contributor rule.** “Use structlog, do not use print” is easy to review and enforce.
+* **Trade-off.** `structlog` adds a dependency and requires contributors to follow a more deliberate logging style than plain stdlib logging.
+* **Trade-off.** JSON logs are less readable in raw form, so development output requires a separate renderer for local use.
