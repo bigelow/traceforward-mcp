@@ -2,11 +2,11 @@
 
 ## What is TraceForward?
 
-TraceForward is an MCP server that gives your coding agent the same context a senior engineer would gather before touching a service. Before your agent suggests restarting a service, it should know why that service is failing in your environment — what it depends on, how it's performing, and what errors are showing up.
+TraceForward is an MCP server that exposes OpenTelemetry-backed runtime context to coding agents.
 
 ## The problem
 
-Coding agents ask good questions but have no way to look up the answers. They don't know what a service depends on, how it's been behaving, or what errors have been showing up. A senior engineer would check all of this before writing code. Now your agent can too.
+Coding agents ask good questions but have no way to look up the answers. They don't know what a service depends on, how it's been behaving, or what errors have been showing up. TraceForward gives coding agents a way to query that runtime context directly.
 
 ## How it works
 
@@ -81,6 +81,8 @@ Other MCP-compatible agents (Windsurf, Cline, etc.) follow similar patterns — 
 
 ## Tools reference
 
+TraceForward exposes a small tool surface aimed at the first questions an engineer or agent would ask during triage.
+
 | Tool | What question it answers |
 |------|------------------------|
 | `traceforward_list_services` | What services exist in this environment? |
@@ -92,11 +94,13 @@ Other MCP-compatible agents (Windsurf, Cline, etc.) follow similar patterns — 
 
 ## Adding a backend
 
-Implement a new adapter in `adapters/`. Implement the `SignalAdapter` protocol from `adapters/protocol.py` — four methods: `list_services`, `query_logs`, `query_metrics`, `query_traces`. Each returns normalized Pydantic v2 models. The tools `traceforward_get_service_map` and `traceforward_get_errors` are derived from trace data in the signals layer and do not require separate backend methods. See `adapters/fixture.py` for the reference implementation.
+To add a backend, implement the `SignalAdapter` protocol in `adapters/`.
+
+See `adapters/fixture.py` for the reference implementation.
 
 ## Sample session
 
-An agent is asked to restart `payment-service` after reports of checkout failures. Before suggesting a restart, it checks TraceForward.
+An agent is asked to investigate checkout failures in payment-service and queries TraceForward before suggesting a fix.
 
 **Agent calls `traceforward_get_errors(service="payment-service")`:**
 
@@ -137,8 +141,6 @@ Now the agent knows: the failures are a gateway timeout and a card decline from 
 
 ## Architecture decisions
 
-TraceForward is built with AI coding agents. An agent writing code without architectural context is just a fast typist — it needs to know *why* before it can get the *what* right.
-
-Every architectural decision is documented before the code that implements it. The ADRs in [`docs/adr/`](docs/adr/) define the adapter pattern, tool surface, security model, terminology conventions, governance boundaries, and development methodology. They serve as both project governance and context injection for agent-assisted development.
+Architectural decisions are documented in ADRs before implementation. The ADRs define the adapter model, tool surface, security boundaries, and terminology used across the project.
 
 See the [ADR index](docs/adr/README.md) for the full list.
