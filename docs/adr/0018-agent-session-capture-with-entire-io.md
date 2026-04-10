@@ -9,13 +9,13 @@ TraceForward is developed with the assistance of coding agents under explicit ar
 
 Git captures what changed. Commit messages capture a summary of why. Neither captures how the implementation was developed: the prompts given to the agent, the alternatives explored, the iterations taken, or the constraints applied during the session.
 
-Without session capture, agent-assisted development leaves a gap between architectural intent and committed implementation. For a project that treats governance and traceability as part of its engineering discipline, that gap is material.
+Without session capture, agent-assisted development leaves a gap between architectural intent and committed implementation.
 
 ## Decision
 
 TraceForward captures agent implementation sessions as part of its development audit trail.
 
-Session capture preserves the implementation context between architectural decisions and committed code. It is used to provide an additional traceability layer between:
+Session capture preserves the implementation context between architectural decisions and committed code. It provides an additional traceability layer between:
 
 * **ADR** — why a decision exists
 * **session** — how the implementation was developed
@@ -25,12 +25,12 @@ The current mechanism used for session capture is **Entire.io**, which records c
 
 ## What is captured
 
-* **Commit-correlated session checkpoints** that preserve the prompts, outputs, and implementation context associated with agent-assisted development
+* **Commit-correlated session checkpoints** that preserve prompts, outputs, and implementation context associated with agent-assisted development
 * **Session-to-commit linkage** so contributors can trace from committed code back to the development session that produced it
 
 ## What is not captured
 
-* **Human review decisions** beyond what is visible in the final commit history, diffs, or code review system
+* **Human review decisions** beyond what is visible in commit history, diffs, or code review systems
 * **Non-committed exploratory work** unless explicitly preserved through the chosen session capture mechanism
 
 ## Integration boundaries
