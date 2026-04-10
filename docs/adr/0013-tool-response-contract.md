@@ -5,35 +5,39 @@
 
 ## Context
 
-TraceForward's six MCP tools (ADR-0003) return signal data to coding agents. The tool surface is defined, but not the shape of what comes back. Without a response contract, each tool invents its own output structure, partial-failure handling, and metadata conventions. Agents cannot reason consistently across tools, and contributors cannot implement new tools or adapters without guessing at the expected output.
+TraceForward’s MCP tools return signal data to coding agents. The tool surface is defined in ADR-0003, but the response shape must also be explicit. Without a shared response contract, each tool would define its own output structure, metadata, and partial-failure behavior, making consistent agent reasoning difficult and contributor implementation error-prone.
 
-Several architectural decisions depend on response shape being explicit:
+Several architectural decisions depend on response shape being standardized:
 
-- ADR-0009 (error handling) defines error categories but not how errors coexist with partial results in a single response.
-- ADR-0011 (redaction) applies redaction markers (`[REDACTED]`, `[topology restricted]`) but does not define where those markers appear in the response structure.
-- ADR-0012 (canonical entities) defines the identity model but not how canonical entities are represented in tool output.
-- The ChatGPT review identified truth, confidence, freshness, and "I don't know" signals as essential for preventing agents from speaking with false certainty.
+* ADR-0009 defines error categories but not how errors coexist with partial results
+* ADR-0011 defines redaction markers but not where they appear in responses
+* ADR-0012 defines canonical entities but not how they are represented in tool output
 
-The harder version of this problem: TraceForward is not just returning data. It is providing evidence that agents use to make judgments. The response contract determines whether that evidence is trustworthy or misleading.
+TraceForward does not just return data. It returns evidence that agents use to make judgments. The response contract therefore determines whether that evidence is trustworthy, incomplete, stale, or contradictory.
 
 ## Decision
 
-All TraceForward MCP tools return a **standard response envelope** that wraps signal-specific data with metadata an agent needs to assess the evidence.
+TraceForward will return all MCP tool results in a standard response envelope.
+
+The envelope separates signal-specific data from the metadata an agent needs to assess the evidence: what was queried, how complete the result is, how fresh it is, what warnings apply, and what errors occurred.
 
 ### Response envelope
 
-Every tool response contains:
+Every tool response uses this structure:
 
-```
+```json
 {
-  "data": [ ... ],              # signal-specific results
+  "data": [],
   "metadata": {
     "tool": "traceforward_get_traces",
-    "service": { "name": "payment-api", "environment": "staging" },
+    "service": {
+      "name": "payment-api",
+      "environment": "staging"
+    },
     "query": {
       "lookback_hours": 24,
       "limit": 50,
-      "filters": { ... }
+      "filters": {}
     },
     "freshness": {
       "query_time": "2026-03-25T14:32:01Z",
@@ -41,7 +45,7 @@ Every tool response contains:
       "oldest_signal": "2026-03-25T02:15:03Z"
     },
     "completeness": {
-      "status": "complete | partial | empty | degraded",
+      "status": "complete",
       "returned": 47,
       "limit": 50,
       "truncated": false,
@@ -57,105 +61,102 @@ Every tool response contains:
 }
 ```
 
-### Envelope fields
+### Envelope semantics
 
 #### `data`
 
-The signal-specific results. Shape varies by tool (traces, metrics, logs, service map, error summaries, service list). Each item in `data` carries canonical entity references (ADR-0012) and may carry `source_attributes` for backend-specific evidence.
+`data` contains the signal-specific results for the tool. The shape varies by tool, but every item may include canonical entity references and `source_attributes`.
 
-When no results match the query, `data` is an empty list — not null, not omitted. An empty list means "I looked and found nothing," which is different from a failure.
+When no results match the query, `data` is an empty list. Empty results are a valid outcome, not a failure.
 
 #### `metadata`
 
-Context about the query and the evidence returned.
+`metadata` describes the evidence returned:
 
-- **`tool`** — which tool produced this response.
-- **`service`** — the canonical service reference queried, when applicable.
-- **`query`** — the effective query parameters, including defaults that were applied. This lets the agent know what it actually asked for, not just what it thought it asked for.
-- **`freshness`** — temporal bounds of the evidence. `query_time` is when TraceForward executed the query. `newest_signal` and `oldest_signal` are the timestamps of the most and least recent signals in the result set. If the newest signal is hours old, the agent should reason about whether the data is stale. TraceForward surfaces the facts; the agent makes the judgment.
-- **`completeness`** — whether the response represents the full picture or a partial view.
-- **`adapter`** — which adapter produced the data and how long the backend took to respond. Useful for debugging, not for agent reasoning.
+* **`tool`** — the tool that produced the response
+* **`service`** — canonical service reference, when applicable
+* **`query`** — effective query parameters, including defaults
+* **`freshness`** — when the query ran and the temporal bounds of the returned evidence
+* **`completeness`** — whether the result is complete, partial, empty, or degraded
+* **`adapter`** — which adapter produced the response and backend latency information
 
-#### `completeness` semantics
+#### `completeness`
 
-Completeness is the most important metadata field. It tells the agent how much to trust the result set:
+`completeness` is the primary trust signal in the envelope.
 
-- **`complete`** — the query returned all matching results within the requested bounds. The agent can reason over this data with full confidence that nothing was omitted.
-- **`partial`** — some results were returned but the response is incomplete. The `gaps` field describes what is missing (e.g., "metrics backend unreachable — traces and logs included, metrics omitted"). Consistent with ADR-0009: partial results over total failure.
-- **`empty`** — the query executed successfully but returned no matching data. This is a meaningful answer, not an error. "No errors in the last 24 hours" is useful intelligence.
-- **`degraded`** — the response was returned but the adapter reported reduced reliability (e.g., the backend was under load, returned a timeout on some partitions, or served from a stale cache). Data is present but its completeness cannot be guaranteed.
+* **`complete`** — all matching results within the requested bounds are included
+* **`partial`** — some results are present, but part of the response is missing
+* **`empty`** — the query succeeded but returned no matching data
+* **`degraded`** — data was returned, but the adapter could not guarantee completeness or reliability
 
-The `truncated` flag indicates whether the result count hit the `limit`. If `truncated` is true, the agent knows more data exists beyond what was returned.
+If the result hit the configured limit, `truncated` is set to `true`.
 
-The `gaps` array lists specific missing components when status is `partial` or `degraded`:
+When status is `partial` or `degraded`, `gaps` describes what is missing and why.
 
-```
-"gaps": [
-  {
-    "signal_type": "metrics",
-    "reason": "backend_timeout",
-    "message": "Metrics backend timed out after 10s. Traces and logs are included."
-  }
-]
+Example:
+
+```json
+{
+  "signal_type": "metrics",
+  "reason": "backend_timeout",
+  "message": "Metrics backend timed out after 10s. Traces and logs are included."
+}
 ```
 
 #### `warnings`
 
-Non-fatal conditions the agent should be aware of:
+`warnings` capture non-fatal conditions such as:
 
-- Redaction was applied (`"Fields redacted per policy — credential patterns detected in trace headers"`)
-- Stale data detected (`"Newest signal is 6 hours old — backend may have ingestion lag"`)
-- Adapter reported degraded performance
-- Query defaults were applied because the agent did not specify parameters
+* redaction applied
+* stale data detected
+* defaults applied
+* backend degradation
+* conflicting signals
 
-Warnings are structured: each warning has a `category` (e.g., `redaction`, `staleness`, `defaults_applied`, `backend_degraded`) and a `message`.
+Warnings are structured objects with `category` and `message`.
 
 #### `errors`
 
-Errors that prevented part or all of the response from being produced. Uses the error categories from ADR-0009 (`connection_error`, `query_error`, `not_found`, `validation_error`, `authentication_error`, `authorization_error`). Errors and data can coexist in the same response when `completeness.status` is `partial`.
+`errors` capture failures using the normalized categories from ADR-0009. Errors may coexist with `data` when `completeness.status` is `partial`.
 
-### "I don't know" as a first-class response
+### Honest uncertainty
 
-TraceForward is allowed — and expected — to say it does not know. This is not a failure mode. It is an honest answer.
+TraceForward is expected to represent uncertainty directly.
 
-Specific forms:
+* **`empty`** means: the query ran successfully and found nothing
+* **`partial`** means: some evidence is available, but part is missing
+* **`degraded`** means: evidence is available, but completeness or reliability is uncertain
+* **conflicting signals** are surfaced as warnings rather than resolved by TraceForward
 
-- **`completeness.status: "empty"` with no errors** — "I looked and found nothing." The agent should treat this as evidence of absence within the query bounds, not as a system failure.
-- **`completeness.status: "partial"` with gaps** — "I have some evidence but not all of it. Here is what I have and what I am missing." The agent should reason with reduced confidence.
-- **`completeness.status: "degraded"`** — "I have data but I cannot guarantee it is complete. The backend was unreliable during this query." The agent should treat this as provisional evidence.
-- **Contradictory signals** — when data from different signal types within the same response appears contradictory (e.g., traces show success but logs show errors for the same time window), TraceForward does not resolve the contradiction. It returns both signals with their respective metadata and adds a warning: `"category": "conflicting_signals"`. The agent decides which evidence to weight. TraceForward provides intelligence, not conclusions (ADR-0006).
+TraceForward provides evidence, not conclusions.
 
-### Freshness and staleness
+### Freshness
 
-TraceForward does not define a global staleness threshold. What counts as "stale" depends on the operational context — a 6-hour-old metric may be fine for a nightly batch service and dangerously outdated for a high-frequency trading system.
+TraceForward does not define a universal staleness rule. Instead, it reports freshness facts:
 
-Instead, TraceForward surfaces freshness facts:
+* `query_time`
+* `newest_signal`
+* `oldest_signal`
 
-- `freshness.query_time` — when the query ran.
-- `freshness.newest_signal` — the most recent data point.
-- `freshness.oldest_signal` — the earliest data point in the result.
-
-If the gap between `query_time` and `newest_signal` exceeds a configurable threshold (default: 1 hour), TraceForward adds a `staleness` warning. The threshold is operator-configurable, not hardcoded.
-
-The agent receives the freshness data and the warning. Whether to trust stale data is the agent's judgment, not TraceForward's.
+If `query_time - newest_signal` exceeds a configurable threshold, TraceForward adds a `staleness` warning. The threshold is operator-configurable.
 
 ### Provenance
 
-Every item in the `data` array carries:
+Each item in `data` carries:
 
-- **`adapter`** — which adapter produced this item.
-- **`source_attributes`** — backend-specific metadata preserved as evidence (ADR-0012).
+* **`adapter`**
+* **`source_attributes`**
 
-This is not a full provenance chain. TraceForward does not track data lineage through the backend's own pipeline (e.g., whether Loki ingested a log entry with delay, or whether a metric was aggregated before reaching TraceForward). Provenance in TraceForward means: "this data came from this adapter, querying this backend, at this time."
+TraceForward provenance means: this data came from this adapter, querying this backend, at this time.
 
-Full backend provenance is out of scope. TraceForward is honest about what it knows and does not fabricate certainty about what it does not.
+Full backend lineage is out of scope.
 
 ## Consequences
 
-- **Consistent agent reasoning.** Every tool returns the same envelope. Agents parse one structure, assess completeness and freshness uniformly, and handle partial results with a single code path.
-- **Honest uncertainty.** Completeness status, gap descriptions, staleness warnings, and conflicting-signal markers give agents the information to calibrate confidence. TraceForward never forces false certainty.
-- **Partial results work.** The envelope explicitly supports coexistence of data, warnings, and errors. An agent investigating a service gets logs and traces even when the metrics backend is down.
-- **Debuggable.** Query metadata shows what was actually queried (including applied defaults), adapter latency surfaces backend performance issues, and provenance traces data to its source.
-- **Trade-off.** The envelope adds metadata overhead to every response. For small result sets, metadata may be a significant fraction of the payload. This is acceptable — the metadata is what makes the evidence trustworthy.
-- **Trade-off.** TraceForward does not resolve contradictions or compute confidence scores. It surfaces evidence and lets the agent reason. This is a deliberate product decision (consistent with ADR-0006) but means agents must be sophisticated enough to handle ambiguity.
-- **Trade-off.** Freshness thresholds are operator-configurable, which means agents in different deployments may receive staleness warnings at different thresholds. This is intentional — operational context varies — but means agent behavior is not fully portable across TraceForward instances.
+* **Consistent agent reasoning.** All tools return the same outer structure, so agents can assess completeness, freshness, and failures uniformly.
+* **Honest uncertainty.** TraceForward can explicitly represent empty, partial, degraded, and conflicting evidence without forcing false certainty.
+* **Partial results are first-class.** Data, warnings, and errors can coexist in a single response.
+* **Debuggability.** Query metadata, backend latency, and provenance make tool behavior easier to inspect.
+* **Trade-off.** The envelope adds metadata overhead to every response.
+* **Trade-off.** TraceForward does not compute confidence scores or resolve contradictions. It exposes evidence and leaves judgment to the caller.
+* **Trade-off.** Freshness warnings depend on operator-configured thresholds, so behavior may vary between deployments.
