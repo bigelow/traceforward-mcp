@@ -5,56 +5,61 @@
 
 ## Context
 
-TraceForward's adapter pattern (ADR-0001) defines a `SignalAdapter` protocol with four methods: `list_services`, `query_logs`, `query_metrics`, and `query_traces`. Any new backend integration implements this protocol.
+TraceForward’s adapter model, defined in ADR-0001, establishes a `SignalAdapter` protocol with four methods: `list_services`, `query_logs`, `query_metrics`, and `query_traces`. Contributors implementing new backends need more than signatures alone. They need a working example that shows expected model shapes, data relationships, and how adapter outputs support both direct and derived tools.
 
-Before a contributor can write a new adapter, they need a working example that demonstrates the full contract — not just the method signatures, but the shape of the data, the behavior of derived tools (`get_service_map`, `get_errors`), and the interaction between the adapter layer and the tool layer.
-
-The fixture adapter already exists and ships realistic sample data. But its role has not been formally defined. Is it a demo? A test harness? A development tool? A specification? Without clarity, the fixture adapter risks drifting into a dumping ground for convenience data that no longer represents real adapter behavior.
+The fixture adapter already provides deterministic sample data and a complete implementation of the adapter interface. Its architectural role needs to be explicit so it does not drift into a convenience-only development artifact.
 
 ## Decision
 
-The fixture adapter (`adapters/fixture.py`) is the **reference implementation** of the `SignalAdapter` protocol. It serves three purposes:
+The fixture adapter in `adapters/fixture.py` is the reference implementation of the `SignalAdapter` protocol.
+
+It serves three roles:
 
 ### 1. Specification by example
 
-The fixture adapter's return values define the canonical shape of adapter output. Every field, every type, every relationship between entities in the fixture data is a statement about what a real adapter must produce.
+The fixture adapter demonstrates the expected behavior and normalized output shape of a conforming adapter. Contributors use it to understand how canonical models, signal data, and derived-tool inputs should look in practice.
 
-If a contributor is unsure whether `query_traces` should include error spans, they check the fixture adapter. If the fixture includes them, the contract expects them.
+The formal contract remains the `SignalAdapter` protocol and the project’s typed models. The fixture adapter is the concrete example of that contract.
 
 ### 2. Development and testing harness
 
-Fixture mode (`mise run dev`) starts TraceForward with no external dependencies. This is the default path for:
+Fixture mode is the default zero-dependency path for local development, CI, and agent evaluation.
 
-- Local development — iterate on tool logic without a running backend.
-- CI — all tests run against the fixture adapter. No network, no containers, no flaky backend connections.
-- Agent evaluation — test how a coding agent interacts with TraceForward tools using deterministic, reproducible data.
+It is used for:
+
+* local development of tool logic without a running backend
+* CI execution without network or backend dependencies
+* deterministic agent evaluation against known data
 
 ### 3. Contributor onboarding
 
-The fixture adapter is the first file a new contributor reads after the README. Its structure teaches the adapter pattern by showing a complete, working implementation rather than describing an abstract interface.
+The fixture adapter is the first complete adapter implementation contributors should read. It teaches the adapter pattern through a working example rather than abstract interface documentation.
 
-### Fixture data requirements
+## Fixture data requirements
 
-The fixture data set shall be:
+Fixture data must be:
 
-- **Realistic.** Service names, operation names, error messages, and metric values should resemble what a real microservices environment produces. The sample session in the README is drawn from fixture data.
-- **Complete.** Every tool must return meaningful results against the fixture data. If `traceforward_get_service_map` returns an empty graph, the fixture data is incomplete.
-- **Deterministic.** No randomness, no timestamps derived from `now()`. Tests depend on fixture data being identical across runs.
-- **Minimal but sufficient.** Enough services, traces, and relationships to exercise all tools and edge cases (multi-hop dependencies, error spans, log levels). Not so much that the fixture file becomes hard to read or maintain.
+* **Realistic** — service names, operation names, errors, and metrics should resemble a plausible microservices environment
+* **Complete** — every tool should return meaningful results against fixture data
+* **Deterministic** — no randomness or runtime-derived timestamps
+* **Minimal but sufficient** — enough data to exercise all tools and key edge cases without becoming unwieldy
 
-### Fixture data as test oracle
+## Fixture data as test oracle
 
-Tests verify tool behavior against fixture data with known expected outputs. When fixture data changes, tests that depend on specific values must be updated. This is intentional — it forces fixture changes to be deliberate and reviewed, not accidental.
+Tests may assert against known fixture outputs. Changes to fixture data that affect expected results must be reviewed and updated deliberately.
 
-### What the fixture adapter is not
+This coupling is intentional. It makes fixture changes visible and prevents accidental drift in the reference implementation.
 
-- Not a mock. Mocks simulate behavior with shortcuts. The fixture adapter implements the full `SignalAdapter` protocol with the same code paths a real adapter would use.
-- Not a demo backend. It does not simulate latency, authentication, or failure modes. Those concerns belong to integration tests against real backends.
+## What the fixture adapter is not
+
+* **Not a mock** — it implements the full adapter protocol rather than a shortcut testing surface
+* **Not a simulation of all backend behavior** — it does not attempt to model latency, authentication, rate limiting, or backend-specific failure modes
 
 ## Consequences
 
-- **Single source of truth.** Contributors learn the adapter contract from a working implementation, not from documentation that may drift from reality.
-- **Zero-dependency testing.** CI and local development never require an external observability backend, keeping the feedback loop fast.
-- **Fixture maintenance cost.** When the `SignalAdapter` protocol evolves, the fixture adapter must be updated first. This is a feature — it forces the protocol change to be expressed concretely before any real adapter is modified.
-- **Trade-off.** Fixture data is static and cannot represent all real-world edge cases (partial failures, rate limiting, schema variations across backends). Integration tests against real backends are still needed for production confidence, but are not gated in CI.
-- **Trade-off.** Treating fixture data as a test oracle creates coupling between test assertions and fixture values. This coupling is accepted — it is the mechanism by which fixture changes are made visible and intentional.
+* **Concrete contract example.** Contributors learn the adapter contract from a complete working implementation.
+* **Fast feedback loop.** Local development and CI do not depend on an external observability backend.
+* **Protocol-first evolution.** When the adapter contract changes, the fixture adapter must be updated immediately, forcing the change to be expressed concretely.
+* **Trade-off.** Static fixture data cannot represent every real-world backend behavior or failure mode.
+* **Trade-off.** Tests become intentionally coupled to fixture values, which increases maintenance when fixture data changes.
+* **Trade-off.** Real backend integration testing is still required for production confidence, even though fixture mode is the default development path.
