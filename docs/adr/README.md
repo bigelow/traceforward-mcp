@@ -2,7 +2,7 @@
 
 This directory captures architecturally significant decisions for TraceForward.
 
-Each ADR documents a decision's context, the choice made, and its consequences. ADRs are numbered sequentially and are immutable once accepted — superseded decisions are marked as such and link to their replacement.
+Each ADR documents a decision's context, the choice made, and its consequences. ADRs are numbered sequentially and remain immutable once accepted. When a decision changes, the original ADR is superseded and linked to its replacement.
 
 ## Format
 
@@ -18,7 +18,7 @@ ADRs follow a lean Nygard-style template: Title, Date, Status, Context, Decision
 | [0004](0004-python-uv-pydantic-v2-stack.md) | Python, uv, and Pydantic v2 Stack | Accepted |
 | [0005](0005-default-query-behaviors.md) | Default Query Behaviors | Accepted |
 | [0006](0006-language-and-terminology-conventions.md) | Language and Terminology Conventions | Accepted |
-| [0007](0007-tessl-integration-strategy.md) | Tessl Integration Strategy | Accepted |
+| [0007](0007-external-distribution-of-agent-guidance.md) | External Distribution of Agent Guidance | Accepted |
 | [0008](0008-security-and-authentication-model.md) | Security and Authentication Model | Accepted |
 | [0009](0009-error-handling-philosophy.md) | Error Handling Philosophy | Accepted |
 | [0010](0010-structured-logging-with-structlog.md) | Structured Logging with structlog | Accepted |
@@ -29,4 +29,4 @@ ADRs follow a lean Nygard-style template: Title, Date, Status, Context, Decision
 | [0015](0015-adr-driven-development-methodology.md) | ADR-Driven Development Methodology | Accepted |
 | [0016](0016-fixture-adapter-as-reference-implementation.md) | Fixture Adapter as Reference Implementation | Accepted |
 | [0017](0017-test-strategy-and-coverage-policy.md) | Test Strategy and Coverage Policy | Accepted |
-| [0018](0018-agent-session-capture-with-entire-io.md) | Agent Session Capture with Entire.io | Accepted |
+| [0018](0018-agent-session-capture.md) | Agent Session Capture | Accepted |
